@@ -9,7 +9,7 @@ const { execFile } = require("child_process");
 // ──────────────────────────────────────────────
 // 路径常量
 // ──────────────────────────────────────────────
-const APP_DIR = path.join(__dirname);
+const APP_DIR = app.getPath("userData");
 const CONFIGS_DIR = path.join(APP_DIR, "configs");
 const LOG_FILE = path.join(APP_DIR, "log.txt");
 
