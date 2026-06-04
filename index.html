@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>IPHelper — 网络切换工具</title>
+<style>
+/* ────────────────────────────────────────────
+   CSS Variables & Reset
+   ──────────────────────────────────────────── */
+:root {
+  --bg:            #f5f5f7;
+  --bg-card:       #ffffff;
+  --bg-input:      #ffffff;
+  --bg-list:       #ffffff;
+  --bg-list-hover: #f0f0f5;
+  --bg-list-sel:   #007aff;
+  --bg-log:        #1d1d1f;
+  --border:        #d2d2d7;
+  --text:          #1d1d1f;
+  --text-secondary:#6e6e73;
+  --text-log:      #a1a1a6;
+  --text-on-sel:   #ffffff;
+  --accent:        #007aff;
+  --accent-hover:  #0062cc;
+  --danger:        #ff3b30;
+  --danger-hover:  #d63029;
+  --success:       #34c759;
+  --warning:       #ff9500;
+  --radius:        10px;
+  --radius-sm:     6px;
+  --shadow:        0 1px 3px rgba(0,0,0,0.08);
+  --font:          -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-mono:     "SF Mono", "Menlo", "Monaco", monospace;
+  --drag-height:   38px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:            #1c1c1e;
+    --bg-card:       #2c2c2e;
+    --bg-input:      #3a3a3c;
+    --bg-list:       #2c2c2e;
+    --bg-list-hover: #3a3a3c;
+    --bg-list-sel:   #0a84ff;
+    --bg-log:        #000000;
+    --border:        #48484a;
+    --text:          #f5f5f7;
+    --text-secondary:#98989d;
+    --text-log:      #6e6e73;
+    --text-on-sel:   #ffffff;
+    --accent:        #0a84ff;
+    --accent-hover:  #409cff;
+    --danger:        #ff453a;
+    --danger-hover:  #ff6961;
+    --success:       #30d158;
+    --shadow:        0 1px 3px rgba(0,0,0,0.3);
+  }
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ────────────────────────────────────────────
+   Drag Region (for hiddenInset titlebar)
+   ──────────────────────────────────────────── */
+.drag-region {
+  height: var(--drag-height);
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.drag-region .title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+/* ────────────────────────────────────────────
+   Main Content
+   ──────────────────────────────────────────── */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px 12px;
+  gap: 10px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ────────────────────────────────────────────
+   Region 1: 网卡选择 + 操作按钮
+   ──────────────────────────────────────────── */
+.region-top {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  flex-shrink: 0;
+}
+.region-top .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.region-top label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.region-top select {
+  flex: 1;
+  min-width: 150px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font);
+  outline: none;
+  cursor: pointer;
+}
+.region-top select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+}
+
+.btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s, transform 0.1s;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.btn-secondary:hover:not(:disabled) { background: rgba(0,122,255,0.08); }
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+.btn-danger:hover:not(:disabled) { background: rgba(255,59,48,0.08); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--bg-list-hover); }
+
+/* ────────────────────────────────────────────
+   Region 2: 配置名称输入
+   ──────────────────────────────────────────── */
+.region-save {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  box-shadow: var(--shadow);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.region-save input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font);
+  outline: none;
+}
+.region-save input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+}
+.region-save input::placeholder { color: var(--text-secondary); }
+
+/* ────────────────────────────────────────────
+   Region 3: 配置列表
+   ──────────────────────────────────────────── */
+.region-list {
+  background: var(--bg-list);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.region-list-header {
+  padding: 10px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.region-list-header .count {
+  font-weight: 400;
+}
+.list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.list-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.config-item {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.config-item:last-child { border-bottom: none; }
+.config-item:hover { background: var(--bg-list-hover); }
+.config-item.selected { background: var(--bg-list-sel); color: var(--text-on-sel); }
+.config-item.selected .config-meta { color: rgba(255,255,255,0.7); }
+.config-item.selected .config-tag { background: rgba(255,255,255,0.2); color: rgba(255,255,255,0.9); }
+
+.config-name {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.config-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0,122,255,0.1);
+  color: var(--accent);
+  font-weight: 500;
+}
+.config-detail {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.config-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* ────────────────────────────────────────────
+   Region 4: 操作按钮
+   ──────────────────────────────────────────── */
+.region-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.region-actions .btn { flex: 1; min-width: 80px; padding: 8px 12px; font-size: 13px; }
+
+/* ────────────────────────────────────────────
+   Region 5: 日志区
+   ──────────────────────────────────────────── */
+.region-log {
+  background: var(--bg-log);
+  border-radius: var(--radius);
+  flex-shrink: 0;
+  height: 120px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.log-header {
+  padding: 6px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-log);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.log-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 16px 10px;
+  min-height: 0;
+}
+.log-line {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-log);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.log-empty {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-log);
+  opacity: 0.5;
+  font-style: italic;
+}
+.log-error { color: var(--danger); }
+.log-success { color: var(--success); }
+
+/* ────────────────────────────────────────────
+   Status Banner / Toast
+   ──────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  top: calc(var(--drag-height) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 20px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.25s;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.toast.show { opacity: 1; }
+.toast.info    { background: var(--accent); color: #fff; }
+.toast.success { background: var(--success); color: #fff; }
+.toast.error   { background: var(--danger); color: #fff; }
+
+/* ────────────────────────────────────────────
+   Scrollbar
+   ──────────────────────────────────────────── */
+.list-scroll::-webkit-scrollbar,
+.log-scroll::-webkit-scrollbar { width: 5px; }
+.list-scroll::-webkit-scrollbar-track,
+.log-scroll::-webkit-scrollbar-track { background: transparent; }
+.list-scroll::-webkit-scrollbar-thumb,
+.log-scroll::-webkit-scrollbar-thumb {
+  background: rgba(128,128,128,0.3);
+  border-radius: 999px;
+}
+
+/* ────────────────────────────────────────────
+   Spinner
+   ──────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Drag Region -->
+<div class="drag-region">
+  <span class="title">IPHelper</span>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Main Content -->
+<div class="main-content">
+
+  <!-- Region 1: 网卡选择 + 抓取 -->
+  <div class="region-top">
+    <div class="row">
+      <label>🔌 网卡</label>
+      <select id="ifaceSelect">
+        <option value="">— 选择网卡 —</option>
+      </select>
+      <button class="btn btn-secondary" id="btnRefreshIfaces" title="刷新网卡列表">🔄 刷新</button>
+      <button class="btn btn-primary" id="btnFetch" disabled title="抓取当前网络配置">📥 抓取当前</button>
+    </div>
+  </div>
+
+  <!-- Region 2: 配置名称 + 保存 -->
+  <div class="region-save">
+    <input type="text" id="configName" placeholder="配置名称，如：办公静态网络" maxlength="64">
+    <button class="btn btn-primary" id="btnSave" disabled title="保存当前配置">💾 保存配置</button>
+  </div>
+
+  <!-- Region 3: 配置列表 -->
+  <div class="region-list">
+    <div class="region-list-header">
+      <span>📋 已保存的配置</span>
+      <span class="count" id="configCount">0 项</span>
+    </div>
+    <div class="list-scroll" id="configList">
+      <div class="list-empty">暂无配置，请先抓取并保存</div>
+    </div>
+  </div>
+
+  <!-- Region 4: 操作按钮 -->
+  <div class="region-actions">
+    <button class="btn btn-primary" id="btnApply" disabled>✅ 应用配置</button>
+    <button class="btn btn-secondary" id="btnDHCP" disabled>🔄 恢复 DHCP</button>
+    <button class="btn btn-ghost" id="btnRefreshConfigs">🔄 刷新列表</button>
+    <button class="btn btn-danger" id="btnDelete" disabled>🗑 删除配置</button>
+  </div>
+
+  <!-- Region 5: 日志 -->
+  <div class="region-log">
+    <div class="log-header">
+      <span>📜 操作日志</span>
+      <button class="btn btn-ghost" id="btnClearLog" style="padding:2px 8px;font-size:10px;">清空</button>
+    </div>
+    <div class="log-scroll" id="logContent">
+      <span class="log-empty">等待操作…</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ────────────────────────────────────────────
+   Global State
+   ──────────────────────────────────────────── */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+let state = {
+  interfaces: [],
+  selectedIface: "",
+  currentConfig: null,
+  configs: [],
+  selectedConfigName: null,
+  loading: false,
+};
+
+// UI elements
+const toast = $("#toast");
+const ifaceSelect = $("#ifaceSelect");
+const configName = $("#configName");
+const configList = $("#configList");
+const configCount = $("#configCount");
+const logContent = $("#logContent");
+
+// Buttons
+const btnFetch = $("#btnFetch");
+const btnSave = $("#btnSave");
+const btnApply = $("#btnApply");
+const btnDHCP = $("#btnDHCP");
+const btnDelete = $("#btnDelete");
+const btnRefreshIfaces = $("#btnRefreshIfaces");
+const btnRefreshConfigs = $("#btnRefreshConfigs");
+const btnClearLog = $("#btnClearLog");
+
+// ────────────────────────────────────────────
+// Toast
+// ────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type) {
+  type = type || "info";
+  toast.textContent = msg;
+  toast.className = "toast " + type + " show";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+  }, 3000);
+}
+
+// ────────────────────────────────────────────
+// Log helpers
+// ────────────────────────────────────────────
+function addLogLocal(msg, cls) {
+  const div = document.createElement("div");
+  div.className = "log-line" + (cls ? " " + cls : "");
+  div.textContent = msg;
+  // remove empty placeholder
+  const empty = logContent.querySelector(".log-empty");
+  if (empty) empty.remove();
+  logContent.appendChild(div);
+  logContent.parentElement.scrollTop = logContent.parentElement.scrollHeight;
+}
+
+// ────────────────────────────────────────────
+// Load Interfaces
+// ────────────────────────────────────────────
+async function loadInterfaces() {
+  try {
+    ifaceSelect.innerHTML = '<option value="">— 加载中… —</option>';
+    const res = await window.iphelper.getInterfaces();
+    if (!res.success) {
+      showToast(res.error, "error");
+      ifaceSelect.innerHTML = '<option value="">— 加载失败 —</option>';
+      return;
+    }
+    state.interfaces = res.data;
+    const prev = state.selectedIface;
+    ifaceSelect.innerHTML = '<option value="">— 选择网卡 —</option>';
+    for (const iface of res.data) {
+      const opt = document.createElement("option");
+      opt.value = iface.name;
+      opt.textContent = `${iface.name} — ${iface.displayName}`;
+      ifaceSelect.appendChild(opt);
+    }
+    // 恢复之前的选择
+    if (prev && res.data.some((i) => i.name === prev)) {
+      ifaceSelect.value = prev;
+      state.selectedIface = prev;
+    } else {
+      state.selectedIface = "";
+    }
+    updateButtonStates();
+  } catch (e) {
+    showToast("加载网卡列表异常: " + e.message, "error");
+  }
+}
+
+// ────────────────────────────────────────────
+// Load Configs
+// ────────────────────────────────────────────
+async function loadConfigs() {
+  try {
+    const res = await window.iphelper.listConfigs();
+    if (!res.success) {
+      showToast(res.error, "error");
+      return;
+    }
+    state.configs = res.data;
+    renderConfigList();
+    configCount.textContent = res.data.length + " 项";
+  } catch (e) {
+    showToast("加载配置列表异常: " + e.message, "error");
+  }
+}
+
+// ────────────────────────────────────────────
+// Render Config List
+// ────────────────────────────────────────────
+function renderConfigList() {
+  configList.innerHTML = "";
+  if (state.configs.length === 0) {
+    configList.innerHTML = '<div class="list-empty">暂无配置，请先抓取并保存</div>';
+    return;
+  }
+  for (const cfg of state.configs) {
+    const div = document.createElement("div");
+    div.className = "config-item";
+    if (cfg.name === state.selectedConfigName) div.classList.add("selected");
+
+    const tag = cfg.mode === "dhcp" ? "DHCP" : "静态";
+    const ipInfo = cfg.ip ? `${cfg.ip}/${cfg.netmask}` : "DHCP";
+    const dnsInfo = (cfg.dns && cfg.dns.length > 0) ? cfg.dns.join(", ") : "自动";
+    const ifaceDisplay = (state.interfaces.find((i) => i.name === cfg.interface) || {}).displayName || cfg.interface;
+
+    div.innerHTML = `
+      <div class="config-name">
+        ${escapeHTML(cfg.name)}
+        <span class="config-tag">${tag}</span>
+      </div>
+      <div class="config-detail">${escapeHTML(ipInfo)} → gw ${escapeHTML(cfg.gateway || "—")}</div>
+      <div class="config-meta">${escapeHTML(ifaceDisplay)} · DNS: ${escapeHTML(dnsInfo)}</div>
+    `;
+
+    div.addEventListener("click", () => selectConfig(cfg.name));
+    configList.appendChild(div);
+  }
+}
+
+function selectConfig(name) {
+  state.selectedConfigName = (state.selectedConfigName === name) ? null : name;
+  renderConfigList();
+  updateButtonStates();
+}
+
+function escapeHTML(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ────────────────────────────────────────────
+// Button state management
+// ────────────────────────────────────────────
+function updateButtonStates() {
+  btnFetch.disabled = !state.selectedIface || state.loading;
+  btnDHCP.disabled = !state.selectedIface || state.loading;
+  btnSave.disabled = !state.currentConfig || !configName.value.trim() || state.loading;
+  btnApply.disabled = !state.selectedConfigName || state.loading;
+  btnDelete.disabled = !state.selectedConfigName || state.loading;
+}
+
+// ────────────────────────────────────────────
+// Load Log
+// ────────────────────────────────────────────
+async function loadLog() {
+  try {
+    const res = await window.iphelper.getLog();
+    if (!res.success) return;
+    logContent.innerHTML = "";
+    if (!res.data) {
+      logContent.innerHTML = '<span class="log-empty">等待操作…</span>';
+      return;
+    }
+    const lines = res.data.split("\n");
+    for (const line of lines) {
+      const div = document.createElement("div");
+      div.className = "log-line";
+      div.textContent = line;
+      logContent.appendChild(div);
+    }
+    logContent.parentElement.scrollTop = logContent.parentElement.scrollHeight;
+  } catch (_) {}
+}
+
+// ────────────────────────────────────────────
+// Event: Fetch Current Config
+// ────────────────────────────────────────────
+btnFetch.addEventListener("click", async () => {
+  if (!state.selectedIface || state.loading) return;
+  state.loading = true;
+  updateButtonStates();
+  btnFetch.innerHTML = '<span class="spinner"></span> 抓取中…';
+
+  try {
+    const res = await window.iphelper.getCurrentConfig(state.selectedIface);
+    if (!res.success) {
+      showToast(res.error, "error");
+      addLogLocal("[错误] " + res.error, "log-error");
+      return;
+    }
+    state.currentConfig = res.data;
+    configName.value = ""; // 让用户自己命名
+
+    const cfg = res.data;
+    addLogLocal(`[抓取] ${state.selectedIface}: ${cfg.ip || "DHCP"}/${cfg.netmask || "—"} gw=${cfg.gateway || "—"} DNS=${(cfg.dns || []).join(",") || "无"}`, "log-success");
+    showToast("已抓取当前网络配置", "success");
+
+    updateButtonStates();
+  } catch (e) {
+    showToast("抓取失败: " + e.message, "error");
+    addLogLocal("[错误] " + e.message, "log-error");
+  } finally {
+    state.loading = false;
+    btnFetch.textContent = "📥 抓取当前";
+    updateButtonStates();
+  }
+});
+
+// ────────────────────────────────────────────
+// Event: Save Config
+// ────────────────────────────────────────────
+btnSave.addEventListener("click", async () => {
+  const name = configName.value.trim();
+  if (!name || !state.currentConfig || state.loading) return;
+
+  state.loading = true;
+  updateButtonStates();
+  btnSave.innerHTML = '<span class="spinner"></span> 保存中…';
+
+  try {
+    const config = {
+      name,
+      interface: state.currentConfig.interface,
+      mode: state.currentConfig.mode || "static",
+      ip: state.currentConfig.ip || "",
+      netmask: state.currentConfig.netmask || "",
+      gateway: state.currentConfig.gateway || "",
+      dns: state.currentConfig.dns || [],
+    };
+
+    const res = await window.iphelper.saveConfig(config);
+    if (!res.success) {
+      showToast(res.error, "error");
+      addLogLocal("[错误] " + res.error, "log-error");
+      return;
+    }
+
+    showToast(`配置「${name}」已保存`, "success");
+    addLogLocal(`[保存] ${name}: ${config.ip}/${config.netmask}`, "log-success");
+    configName.value = "";
+    await loadConfigs();
+  } catch (e) {
+    showToast("保存失败: " + e.message, "error");
+    addLogLocal("[错误] " + e.message, "log-error");
+  } finally {
+    state.loading = false;
+    btnSave.textContent = "💾 保存配置";
+    updateButtonStates();
+  }
+});
+
+// ────────────────────────────────────────────
+// Event: Apply Config
+// ────────────────────────────────────────────
+btnApply.addEventListener("click", async () => {
+  if (!state.selectedConfigName || state.loading) return;
+
+  const cfg = state.configs.find((c) => c.name === state.selectedConfigName);
+  if (!cfg) return;
+
+  // 确认弹窗
+  const msg = [
+    `确认应用配置「${cfg.name}」？`,
+    `网卡: ${cfg.interface}`,
+    `IP: ${cfg.ip || "DHCP"}/${cfg.netmask || "—"}`,
+    `网关: ${cfg.gateway || "—"}`,
+    `DNS: ${(cfg.dns && cfg.dns.length > 0) ? cfg.dns.join(", ") : "自动"}`,
+  ].join("\n");
+
+  if (!confirm(msg)) return;
+
+  state.loading = true;
+  updateButtonStates();
+  btnApply.innerHTML = '<span class="spinner"></span> 应用配置…';
+
+  try {
+    const res = await window.iphelper.applyConfig(state.selectedConfigName);
+    if (!res.success) {
+      showToast(res.error, "error");
+      addLogLocal("[错误] " + res.error, "log-error");
+      return;
+    }
+
+    showToast(`配置「${state.selectedConfigName}」已应用`, "success");
+    addLogLocal(`[应用] ${state.selectedConfigName} → ${cfg.interface}`, "log-success");
+    await loadLog();
+  } catch (e) {
+    showToast("应用失败: " + e.message, "error");
+    addLogLocal("[错误] " + e.message, "log-error");
+  } finally {
+    state.loading = false;
+    btnApply.textContent = "✅ 应用配置";
+    updateButtonStates();
+  }
+});
+
+// ────────────────────────────────────────────
+// Event: Apply DHCP
+// ────────────────────────────────────────────
+btnDHCP.addEventListener("click", async () => {
+  if (!state.selectedIface || state.loading) return;
+  if (!confirm(`确认将 ${state.selectedIface} 切换为 DHCP？`)) return;
+
+  state.loading = true;
+  updateButtonStates();
+  btnDHCP.innerHTML = '<span class="spinner"></span> 切换中…';
+
+  try {
+    const res = await window.iphelper.applyDHCP(state.selectedIface);
+    if (!res.success) {
+      showToast(res.error, "error");
+      addLogLocal("[错误] " + res.error, "log-error");
+      return;
+    }
+
+    showToast(`${state.selectedIface} 已切换为 DHCP`, "success");
+    addLogLocal(`[DHCP] ${state.selectedIface}`, "log-success");
+    await loadLog();
+  } catch (e) {
+    showToast("切换失败: " + e.message, "error");
+    addLogLocal("[错误] " + e.message, "log-error");
+  } finally {
+    state.loading = false;
+    btnDHCP.textContent = "🔄 恢复 DHCP";
+    updateButtonStates();
+  }
+});
+
+// ────────────────────────────────────────────
+// Event: Delete Config
+// ────────────────────────────────────────────
+btnDelete.addEventListener("click", async () => {
+  if (!state.selectedConfigName || state.loading) return;
+  if (!confirm(`确认删除配置「${state.selectedConfigName}」？此操作不可撤销。`)) return;
+
+  state.loading = true;
+  updateButtonStates();
+  btnDelete.innerHTML = '<span class="spinner"></span> 删除中…';
+
+  try {
+    const res = await window.iphelper.deleteConfig(state.selectedConfigName);
+    if (!res.success) {
+      showToast(res.error, "error");
+      addLogLocal("[错误] " + res.error, "log-error");
+      return;
+    }
+
+    showToast(`配置「${state.selectedConfigName}」已删除`, "success");
+    addLogLocal(`[删除] ${state.selectedConfigName}`, "log-success");
+    state.selectedConfigName = null;
+    await loadConfigs();
+  } catch (e) {
+    showToast("删除失败: " + e.message, "error");
+    addLogLocal("[错误] " + e.message, "log-error");
+  } finally {
+    state.loading = false;
+    btnDelete.textContent = "🗑 删除配置";
+    updateButtonStates();
+  }
+});
+
+// ────────────────────────────────────────────
+// Other events
+// ────────────────────────────────────────────
+ifaceSelect.addEventListener("change", () => {
+  state.selectedIface = ifaceSelect.value;
+  updateButtonStates();
+});
+
+configName.addEventListener("input", () => {
+  updateButtonStates();
+});
+
+btnRefreshIfaces.addEventListener("click", loadInterfaces);
+btnRefreshConfigs.addEventListener("click", loadConfigs);
+
+btnClearLog.addEventListener("click", () => {
+  logContent.innerHTML = '<span class="log-empty">等待操作…</span>';
+});
+
+// ────────────────────────────────────────────
+// Init
+// ────────────────────────────────────────────
+(async function init() {
+  await loadInterfaces();
+  await loadConfigs();
+  await loadLog();
+  updateButtonStates();
+})();
+</script>
+
+</body>
+</html>
