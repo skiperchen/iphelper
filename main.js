@@ -9,9 +9,16 @@ const { execFile } = require("child_process");
 // ──────────────────────────────────────────────
 // 路径常量
 // ──────────────────────────────────────────────
-const APP_DIR = app.getPath("userData");
-const CONFIGS_DIR = path.join(APP_DIR, "configs");
-const LOG_FILE = path.join(APP_DIR, "log.txt");
+let APP_DIR, CONFIGS_DIR, LOG_FILE;
+function initPaths() {
+  try {
+    APP_DIR = app.getPath("userData");
+  } catch (_) {
+    APP_DIR = path.join(app.getPath("appData"), "IPHelper");
+  }
+  CONFIGS_DIR = path.join(APP_DIR, "configs");
+  LOG_FILE = path.join(APP_DIR, "log.txt");
+}
 
 // ──────────────────────────────────────────────
 // 工具函数
@@ -371,7 +378,7 @@ function createWindow() {
     trafficLightPosition: { x: 12, y: 12 },
   });
 
-  win.loadFile("index.html");
+  win.loadFile(path.join(__dirname, "index.html"));
 
   // 开发时自动打开 DevTools
   if (process.argv.includes("--dev")) {
@@ -380,6 +387,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  initPaths();
   await ensureConfigsDir();
   createWindow();
 
