@@ -21,28 +21,14 @@
 - **存储**: 本地 JSON 文件（`configs/` 目录）
 
 ## 下载
+> 下载后解压，拖到应用程序里
 
 前往 [Releases](https://github.com/skiperchen/iphelper/releases) 下载最新版本。
 
 > ⚠️ 首次打开提示「无法验证开发者」→ 系统设置 → 隐私与安全性 → 仍要打开
-
-## 构建（必须在 macOS 上）
-
-```bash
-git clone https://github.com/skiperchen/iphelper.git
-cd iphelper
-npm install
-
-# 构建双架构
-npm run build
-
-# 或单独构建
-npm run build:arm64   # Apple Silicon
-npm run build:x64     # Intel Mac
-```
-
-构建产物在 `output/` 目录。
-
+> 如果没有提示，，然后执行下面的命令
+sudo xattr -r -d com.apple.quarantine /Applications/IPHelper.app
+> 
 ## 使用说明
 
 1. **选择网卡** — 下拉框选择 Wi‑Fi 或以太网
