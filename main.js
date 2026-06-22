@@ -132,10 +132,12 @@ ipcMain.handle("get-current-config", async (_event, iface) => {
     }
 
     // 并行获取四类信息
+    // networksetup 需要服务名（如 "Wi-Fi"），ifconfig 需要设备名（如 en0）
+    const netName = await getServiceName(iface);
     const [ifconfigRaw, netstatRaw, dnsRaw] = await Promise.all([
       execPromise("ifconfig", [iface]).catch(() => ""),
       execPromise("netstat", ["-rn", "-f", "inet"]).catch(() => ""),
-      execPromise("networksetup", ["-getdnsservers", iface]).catch(() => ""),
+      netName ? execPromise("networksetup", ["-getdnsservers", netName]).catch(() => "") : Promise.resolve(""),
     ]);
 
     // 解析 IP 和掩码
@@ -211,6 +213,7 @@ ipcMain.handle("save-config", async (_event, config) => {
     const record = {
       name: config.name,
       interface: config.interface,
+      serviceName: config.serviceName || await getServiceName(config.interface),
       mode: config.mode || "static",
       ip: config.ip || "",
       netmask: config.netmask || "",
@@ -282,23 +285,27 @@ ipcMain.handle("apply-config", async (_event, name) => {
     }
 
     const iface = config.interface;
-    const netName = iface; // networksetup 使用 BSD 设备名
+    // networksetup 需要服务名（如 "Wi-Fi"），不是 BSD 设备名（如 en0）
+    const netName = config.serviceName || await getServiceName(iface);
+    if (!netName) {
+      return { success: false, error: `无法找到网卡 "${iface}" 对应的网络服务名` };
+    }
 
     // 步骤1: 设置静态 IP/掩码/网关
     const ipCommand = `networksetup -setmanual "${netName}" "${config.ip}" "${config.netmask}" "${config.gateway}"`;
     await sudoExec(ipCommand);
-    await appendLog(`设置静态IP: ${netName} → ${config.ip}/${config.netmask} gw=${config.gateway}`);
+    await appendLog(`设置静态IP: ${netName}(${iface}) → ${config.ip}/${config.netmask} gw=${config.gateway}`);
 
     // 步骤2: 设置 DNS
     if (config.dns && config.dns.length > 0) {
       const dnsArgs = config.dns.map((d) => `"${d}"`).join(" ");
       const dnsCommand = `networksetup -setdnsservers "${netName}" ${dnsArgs}`;
       await sudoExec(dnsCommand);
-      await appendLog(`设置DNS: ${netName} → ${config.dns.join(", ")}`);
+      await appendLog(`设置DNS: ${netName}(${iface}) → ${config.dns.join(", ")}`);
     } else {
       const dnsCommand = `networksetup -setdnsservers "${netName}" Empty`;
       await sudoExec(dnsCommand);
-      await appendLog(`清空DNS: ${netName}`);
+      await appendLog(`清空DNS: ${netName}(${iface})`);
     }
 
     return { success: true, data: { interface: iface, message: "配置已应用" } };
@@ -313,13 +320,19 @@ ipcMain.handle("apply-dhcp", async (_event, iface) => {
   try {
     if (!iface) return { success: false, error: "请指定网卡名称" };
 
+    // networksetup 需要服务名（如 "Wi-Fi"），不是 BSD 设备名（如 en0）
+    const netName = await getServiceName(iface);
+    if (!netName) {
+      return { success: false, error: `无法找到网卡 "${iface}" 对应的网络服务名` };
+    }
+
     // 步骤1: 切换为 DHCP
-    const dhcpCommand = `networksetup -setdhcp "${iface}"`;
+    const dhcpCommand = `networksetup -setdhcp "${netName}"`;
     await sudoExec(dhcpCommand);
-    await appendLog(`切换DHCP: ${iface}`);
+    await appendLog(`切换DHCP: ${netName}(${iface})`);
 
     // 步骤2: 清空 DNS（让 DHCP 自动分配）
-    const dnsCommand = `networksetup -setdnsservers "${iface}" Empty`;
+    const dnsCommand = `networksetup -setdnsservers "${netName}" Empty`;
     await sudoExec(dnsCommand);
 
     return { success: true, data: { interface: iface, message: "已切换为 DHCP" } };
@@ -349,6 +362,28 @@ ipcMain.handle("get-log", async () => {
 // ──────────────────────────────────────────────
 // 辅助函数
 // ──────────────────────────────────────────────
+
+/**
+ * 硬件设备名 → 网络服务名 映射
+ * 例: en0 → "Wi-Fi", en6 → "USB 10/100/1000 LAN"
+ * networksetup 命令需要服务名，不是 BSD 设备名
+ */
+async function getServiceName(deviceName) {
+  try {
+    const raw = await execPromise("networksetup", ["-listallhardwareports"]);
+    const blocks = raw.split(/\n\n+/);
+    for (const block of blocks) {
+      const portMatch = block.match(/^Hardware Port:\s*(.+)$/m);
+      const devMatch = block.match(/^Device:\s*(.+)$/m);
+      if (portMatch && devMatch && devMatch[1] === deviceName) {
+        return portMatch[1];
+      }
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
 
 /** 十六进制掩码转点分十进制 */
 function hexToNetmask(hex) {

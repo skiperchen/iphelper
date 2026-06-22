@@ -708,9 +708,12 @@ btnSave.addEventListener("click", async () => {
   btnSave.innerHTML = '<span class="spinner"></span> 保存中…';
 
   try {
+    // 从网卡列表中找到对应的服务名
+    const ifaceInfo = state.interfaces.find((i) => i.name === state.currentConfig.interface);
     const config = {
       name,
       interface: state.currentConfig.interface,
+      serviceName: ifaceInfo ? ifaceInfo.displayName : null,
       mode: state.currentConfig.mode || "static",
       ip: state.currentConfig.ip || "",
       netmask: state.currentConfig.netmask || "",
