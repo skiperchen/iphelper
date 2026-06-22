@@ -1,6 +1,6 @@
 {
   "name": "iphelper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "macOS 网络快速切换工具 - 多套网络配置存档、一键切换静态IP/DHCP",
   "main": "main.js",
   "scripts": {
@@ -20,7 +20,10 @@
       "target": [
         {
           "target": "zip",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ],
       "entitlements": "entitlements.mac.plist",
