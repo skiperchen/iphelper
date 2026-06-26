@@ -288,7 +288,13 @@ ipcMain.handle("apply-config", async (_event, name) => {
     // networksetup 需要服务名（如 "Wi-Fi"），不是 BSD 设备名（如 en0）
     const netName = config.serviceName || await getServiceName(iface);
     if (!netName) {
-      return { success: false, error: `无法找到网卡 "${iface}" 对应的网络服务名` };
+      return {
+        success: false,
+        error: `无法找到网卡 "${iface}" 对应的网络服务名。\n\n` +
+               `请执行以下命令查看可用服务:\n` +
+               `  networksetup -listallhardwareports\n\n` +
+               `或在配置文件中手动添加 "serviceName" 字段指定服务名（如 "Wi-Fi"、"Ethernet"）。`,
+      };
     }
 
     // 步骤1: 设置静态 IP/掩码/网关
@@ -367,8 +373,12 @@ ipcMain.handle("get-log", async () => {
  * 硬件设备名 → 网络服务名 映射
  * 例: en0 → "Wi-Fi", en6 → "USB 10/100/1000 LAN"
  * networksetup 命令需要服务名，不是 BSD 设备名
+ *
+ * 方法1 (首选): networksetup -listallhardwareports
+ * 方法2 (回退): networksetup -listnetworkserviceorder
  */
 async function getServiceName(deviceName) {
+  // 方法1: listallhardwareports
   try {
     const raw = await execPromise("networksetup", ["-listallhardwareports"]);
     const blocks = raw.split(/\n\n+/);
@@ -376,13 +386,38 @@ async function getServiceName(deviceName) {
       const portMatch = block.match(/^Hardware Port:\s*(.+)$/m);
       const devMatch = block.match(/^Device:\s*(.+)$/m);
       if (portMatch && devMatch && devMatch[1] === deviceName) {
-        return portMatch[1];
+        const serviceName = portMatch[1];
+        // 防御：确保返回的是服务名而非设备名
+        if (!/^en\d+$/.test(serviceName)) {
+          return serviceName;
+        }
       }
     }
-    return null;
   } catch (_) {
-    return null;
+    // 方法1失败，尝试方法2
   }
+
+  // 方法2: listnetworkserviceorder (解析 "Hardware Port: XXX, Device: en0" 格式)
+  try {
+    const raw = await execPromise("networksetup", ["-listnetworkserviceorder"]);
+    const lines = raw.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const portMatch = lines[i].match(/^\(\d+\)\s+(.+)$/);
+      if (portMatch) {
+        const serviceName = portMatch[1];
+        // 获取该服务的硬件端口信息
+        const fullDesc = lines.slice(i, i + 3).join(" ");
+        const devMatch = fullDesc.match(/Device:\s*(\S+)/);
+        if (devMatch && devMatch[1] === deviceName) {
+          return serviceName;
+        }
+      }
+    }
+  } catch (_) {
+    // 方法2也失败
+  }
+
+  return null;
 }
 
 /** 十六进制掩码转点分十进制 */
