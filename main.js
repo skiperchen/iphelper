@@ -269,7 +269,7 @@ ipcMain.handle("delete-config", async (_event, name) => {
   }
 });
 
-/** apply-config: 应用静态 IP + DNS 配置 */
+/** apply-config: 合并 IP + DNS 为一次 sudo 调用（减少密码提示次数，支持 Touch ID） */
 ipcMain.handle("apply-config", async (_event, name) => {
   try {
     if (!name) return { success: false, error: "请指定要应用的配置名称" };
@@ -285,7 +285,6 @@ ipcMain.handle("apply-config", async (_event, name) => {
     }
 
     const iface = config.interface;
-    // networksetup 需要服务名（如 "Wi-Fi"），不是 BSD 设备名（如 en0）
     const netName = config.serviceName || await getServiceName(iface);
     if (!netName) {
       return {
@@ -297,22 +296,17 @@ ipcMain.handle("apply-config", async (_event, name) => {
       };
     }
 
-    // 步骤1: 设置静态 IP/掩码/网关
-    const ipCommand = `networksetup -setmanual "${netName}" "${config.ip}" "${config.netmask}" "${config.gateway}"`;
-    await sudoExec(ipCommand);
-    await appendLog(`设置静态IP: ${netName}(${iface}) → ${config.ip}/${config.netmask} gw=${config.gateway}`);
-
-    // 步骤2: 设置 DNS
+    // 合并 IP 设置 + DNS 设置为一次 sudo 调用，减少密码提示
+    let commands = `networksetup -setmanual "${netName}" "${config.ip}" "${config.netmask}" "${config.gateway}"`;
     if (config.dns && config.dns.length > 0) {
       const dnsArgs = config.dns.map((d) => `"${d}"`).join(" ");
-      const dnsCommand = `networksetup -setdnsservers "${netName}" ${dnsArgs}`;
-      await sudoExec(dnsCommand);
-      await appendLog(`设置DNS: ${netName}(${iface}) → ${config.dns.join(", ")}`);
+      commands += ` && networksetup -setdnsservers "${netName}" ${dnsArgs}`;
     } else {
-      const dnsCommand = `networksetup -setdnsservers "${netName}" Empty`;
-      await sudoExec(dnsCommand);
-      await appendLog(`清空DNS: ${netName}(${iface})`);
+      commands += ` && networksetup -setdnsservers "${netName}" Empty`;
     }
+
+    await sudoExec(commands);
+    await appendLog(`设置静态IP: ${netName}(${iface}) → ${config.ip}/${config.netmask} gw=${config.gateway}`);
 
     return { success: true, data: { interface: iface, message: "配置已应用" } };
   } catch (e) {
@@ -321,25 +315,20 @@ ipcMain.handle("apply-config", async (_event, name) => {
   }
 });
 
-/** apply-dhcp: 恢复 DHCP */
+/** apply-dhcp: 合并 DHCP + DNS 为一次 sudo 调用 */
 ipcMain.handle("apply-dhcp", async (_event, iface) => {
   try {
     if (!iface) return { success: false, error: "请指定网卡名称" };
 
-    // networksetup 需要服务名（如 "Wi-Fi"），不是 BSD 设备名（如 en0）
     const netName = await getServiceName(iface);
     if (!netName) {
       return { success: false, error: `无法找到网卡 "${iface}" 对应的网络服务名` };
     }
 
-    // 步骤1: 切换为 DHCP
-    const dhcpCommand = `networksetup -setdhcp "${netName}"`;
-    await sudoExec(dhcpCommand);
+    // 合并 DHCP 切换 + DNS 清空为一次 sudo 调用
+    const command = `networksetup -setdhcp "${netName}" && networksetup -setdnsservers "${netName}" Empty`;
+    await sudoExec(command);
     await appendLog(`切换DHCP: ${netName}(${iface})`);
-
-    // 步骤2: 清空 DNS（让 DHCP 自动分配）
-    const dnsCommand = `networksetup -setdnsservers "${netName}" Empty`;
-    await sudoExec(dnsCommand);
 
     return { success: true, data: { interface: iface, message: "已切换为 DHCP" } };
   } catch (e) {
