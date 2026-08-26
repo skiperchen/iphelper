@@ -296,8 +296,15 @@ ipcMain.handle("apply-config", async (_event, name) => {
       };
     }
 
-    // 合并 IP 设置 + DNS 设置为一次 sudo 调用，减少密码提示
-    let commands = `networksetup -setmanual "${netName}" "${config.ip}" "${config.netmask}" "${config.gateway}"`;
+    // 网关为空时，保留当前网卡已有网关，避免 -setmanual 传空串清空网关
+    let effectiveGateway = config.gateway || "";
+    if (!effectiveGateway) {
+      const curGw = await getCurrentGateway();
+      if (curGw) effectiveGateway = curGw;
+    }
+
+    // 合并 IP 设置 + DNS 设置为一次 sudo 调用，减少密码提示 / 触发 Touch ID
+    let commands = `networksetup -setmanual "${netName}" "${config.ip}" "${config.netmask}" "${effectiveGateway}"`;
     if (config.dns && config.dns.length > 0) {
       const dnsArgs = config.dns.map((d) => `"${d}"`).join(" ");
       commands += ` && networksetup -setdnsservers "${netName}" ${dnsArgs}`;
@@ -413,6 +420,17 @@ async function getServiceName(deviceName) {
 function hexToNetmask(hex) {
   const n = parseInt(hex, 16);
   return [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff].join(".");
+}
+
+/** 读取当前默认网关（第一跳），失败返回 null */
+async function getCurrentGateway() {
+  try {
+    const netstatRaw = await execPromise("netstat", ["-rn", "-f", "inet"]);
+    const gwMatch = netstatRaw.match(/^default\s+(\d+\.\d+\.\d+\.\d+)/m);
+    return gwMatch ? gwMatch[1] : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 // ──────────────────────────────────────────────

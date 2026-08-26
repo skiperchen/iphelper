@@ -20,3 +20,15 @@
 - IP/掩码格式校验正则
 - JSON 配置文件读写与异常处理
 - DHCP/静态切换逻辑
+
+### Touch ID 指纹授权（无 Developer 证书方案）
+- 用 **ad-hoc 签名**打包：electron-builder 默认会自动 ad-hoc 签名（无需 Developer ID）
+- `osascript do shell script with administrator privileges` 在本机 GUI 上下文运行时会显示 Touch ID 弹窗
+- 前提：macOS 系统设置 → 触控 ID 与密码 已开启并录入指纹
+- 若仍只弹密码框，检查：
+  1. 是否在「系统设置 → 隐私与安全性 → 辅助功能」授权了 osascript
+  2. 是否从「访达」双击 app 启动（GUI 会话），而非命令行/SSH 启动（无 GUI 会话则无 Touch ID）
+  3. app 是否被 Gatekeeper 拦截（首次需右键-打开，或 `xattr -dr com.apple.quarantine`）
+
+### 已知修复记录
+- **网关清空问题**：apply-config 时若配置 gateway 为空，会先 `getCurrentGateway()` 读取当前网关保留，防止 `networksetup -setmanual` 传空串清空网关
