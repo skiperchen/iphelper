@@ -1,6 +1,6 @@
 {
   "name": "iphelper",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "macOS \u7f51\u7edc\u5feb\u901f\u5207\u6362\u5de5\u5177 - \u591a\u5957\u7f51\u7edc\u914d\u7f6e\u5b58\u6863\u3001\u4e00\u952e\u5207\u6362\u9759\u6001IP/DHCP",
   "main": "main.js",
   "scripts": {
