@@ -10,7 +10,7 @@ REPO = "skiperchen/iphelper"
 TAG = "v1.0.6"
 ASSETS = [
     "dist/IPHelper-1.0.6-mac.zip",
-    "dist/IPHelper-1.0.5-arm64-mac.zip",
+    "dist/IPHelper-1.0.6-arm64-mac.zip",
 ]
 
 def api(url, method="GET", data=None, headers=None, token=None, raw=False, timeout=60):
