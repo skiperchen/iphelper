@@ -296,10 +296,12 @@ ipcMain.handle("apply-config", async (_event, name) => {
       };
     }
 
-    // 网关为空时，保留当前网卡已有网关，避免 -setmanual 传空串清空网关
+    // 网关为空时，保留该网卡自身的 Router（每网卡各自网关），避免 -setmanual 传空串清空网关
+    // 注意：读的是"目标服务自身的网关"(networksetup -getinfo 的 Router)，而不是系统默认路由
+    // (netstat default)。后者在多网卡/多默认路由时会读到别的网卡的网关，导致写错网关"掉网关"。
     let effectiveGateway = config.gateway || "";
     if (!effectiveGateway) {
-      const curGw = await getCurrentGateway();
+      const curGw = (await getServiceRouter(netName)) || (await getCurrentGateway());
       if (curGw) effectiveGateway = curGw;
     }
 
@@ -428,6 +430,22 @@ async function getCurrentGateway() {
     const netstatRaw = await execPromise("netstat", ["-rn", "-f", "inet"]);
     const gwMatch = netstatRaw.match(/^default\s+(\d+\.\d+\.\d+\.\d+)/m);
     return gwMatch ? gwMatch[1] : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * 读取指定网络服务（如 "Wi-Fi"）自身的 Router —— 每网卡各自当前网关，跨网卡准确。
+ * 用于 apply-config 时网关为空的情况下保留该网卡的网关，避免清空/写错。
+ * 相比 getCurrentGateway()(读取系统默认路由)，多网卡场景下不会错读到别的网卡的网关。
+ */
+async function getServiceRouter(serviceName) {
+  if (!serviceName || typeof serviceName !== "string") return null;
+  try {
+    const raw = await execPromise("networksetup", ["-getinfo", serviceName]);
+    const m = raw.match(/^Router:\s*(\d+\.\d+\.\d+\.\d+)/m);
+    return m ? m[1] : null;
   } catch (_) {
     return null;
   }
