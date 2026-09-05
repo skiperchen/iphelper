@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""创建 GitHub Release 并上传 v1.0.5 的安装包。
+"""创建 GitHub Release 并上传 v1.0.6 的安装包。
 
 用法: GH_RELEASE_TOKEN=<token> python3 publish_release.py
 需要权限: repo (创建 release + 上传 asset)
@@ -7,9 +7,9 @@
 import json, os, sys, ssl, urllib.request, urllib.error
 
 REPO = "skiperchen/iphelper"
-TAG = "v1.0.5"
+TAG = "v1.0.6"
 ASSETS = [
-    "dist/IPHelper-1.0.5-mac.zip",
+    "dist/IPHelper-1.0.6-mac.zip",
     "dist/IPHelper-1.0.5-arm64-mac.zip",
 ]
 
@@ -41,7 +41,7 @@ def main():
     code, body = api(
         f"https://api.github.com/repos/{REPO}/releases", "POST",
         {"tag_name": TAG, "name": TAG,
-         "body": "v1.0.5 修复: 应用配置时读目标网卡自身 Router 保留网关，多网卡不再写错/掉网关"},
+         "body": "v1.0.6 新增: 独立 DNS 管理面板 —— 读取当前网卡 DNS、写入静态 DNS、一键恢复自动"},
         token=token)
     if code in (200, 201):
         rel = json.loads(body)

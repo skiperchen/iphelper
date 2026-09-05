@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld("iphelper", {
   /** 恢复 DHCP */
   applyDHCP: (iface) => ipcRenderer.invoke("apply-dhcp", iface),
 
+  /** 读取指定网卡的 DNS */
+  getDNS: (iface) => ipcRenderer.invoke("get-dns", iface),
+
+  /** 写入指定网卡的 DNS（servers 空数组 = 恢复自动） */
+  setDNS: (iface, servers) => ipcRenderer.invoke("set-dns", iface, servers),
+
   /** 读取操作日志 */
   getLog: () => ipcRenderer.invoke("get-log"),
 });

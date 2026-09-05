@@ -393,6 +393,60 @@ body {
 }
 
 /* ────────────────────────────────────────────
+   Region: DNS 管理
+   ──────────────────────────────────────────── */
+.region-dns {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  box-shadow: var(--shadow);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.region-dns-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+}
+.region-dns-head .dns-current {
+  flex: 1;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: 0;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.region-dns-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.region-dns-row input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+.region-dns-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+}
+
+/* ────────────────────────────────────────────
    Spinner
    ──────────────────────────────────────────── */
 .spinner {
@@ -437,7 +491,20 @@ body {
     <button class="btn btn-primary" id="btnSave" disabled title="保存当前配置">💾 保存配置</button>
   </div>
 
-  <!-- Region 3: 配置列表 -->
+  <!-- Region 3: DNS 管理 -->
+  <div class="region-dns">
+    <div class="region-dns-head">
+      <span>🌐 DNS</span>
+      <span class="dns-current" id="dnsCurrent">— 未读取 —</span>
+      <button class="btn btn-ghost" id="btnReadDNS" disabled title="读取当前网卡的 DNS 服务器">📖 读取</button>
+    </div>
+    <div class="region-dns-row">
+      <input type="text" id="dnsInput" disabled placeholder="逗号分隔 DNS（如 223.5.5.5, 114.114.114.114），留空=恢复自动">
+      <button class="btn btn-secondary" id="btnSetDNS" disabled title="写入 DNS 服务器（输入留空=清除并恢复自动）">✍️ 写入 DNS</button>
+    </div>
+  </div>
+
+  <!-- Region 4: 配置列表 -->
   <div class="region-list">
     <div class="region-list-header">
       <span>📋 已保存的配置</span>
@@ -502,6 +569,10 @@ const btnDelete = $("#btnDelete");
 const btnRefreshIfaces = $("#btnRefreshIfaces");
 const btnRefreshConfigs = $("#btnRefreshConfigs");
 const btnClearLog = $("#btnClearLog");
+const dnsCurrent = $("#dnsCurrent");
+const dnsInput = $("#dnsInput");
+const btnReadDNS = $("#btnReadDNS");
+const btnSetDNS = $("#btnSetDNS");
 
 // ────────────────────────────────────────────
 // Toast
@@ -632,11 +703,15 @@ function escapeHTML(str) {
 // Button state management
 // ────────────────────────────────────────────
 function updateButtonStates() {
-  btnFetch.disabled = !state.selectedIface || state.loading;
-  btnDHCP.disabled = !state.selectedIface || state.loading;
+  const hasIface = !!state.selectedIface;
+  btnFetch.disabled = !hasIface || state.loading;
+  btnDHCP.disabled = !hasIface || state.loading;
   btnSave.disabled = !state.currentConfig || !configName.value.trim() || state.loading;
   btnApply.disabled = !state.selectedConfigName || state.loading;
   btnDelete.disabled = !state.selectedConfigName || state.loading;
+  btnReadDNS.disabled = !hasIface || state.loading;
+  btnSetDNS.disabled = !hasIface || state.loading;
+  dnsInput.disabled = !hasIface;
 }
 
 // ────────────────────────────────────────────
@@ -738,6 +813,70 @@ btnSave.addEventListener("click", async () => {
   } finally {
     state.loading = false;
     btnSave.textContent = "💾 保存配置";
+    updateButtonStates();
+  }
+});
+
+// ────────────────────────────────────────────
+// Event: Read DNS
+// ────────────────────────────────────────────
+btnReadDNS.addEventListener("click", async () => {
+  if (!state.selectedIface || state.loading) return;
+  state.loading = true;
+  updateButtonStates();
+  btnReadDNS.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const res = await window.iphelper.getDNS(state.selectedIface);
+    if (!res.success) {
+      showToast(res.error, "error");
+      addLogLocal("[错误] " + res.error, "log-error");
+      return;
+    }
+    const list = res.data.dns || [];
+    const text = list.length ? list.join(", ") : "自动（无静态 DNS）";
+    dnsCurrent.textContent = list.length ? list.join(", ") : "自动";
+    dnsInput.value = list.join(", ");
+    addLogLocal(`[DNS读取] ${state.selectedIface}: ${text}`, "log-success");
+    showToast("已读取当前 DNS", "success");
+  } catch (e) {
+    showToast("读取 DNS 失败: " + e.message, "error");
+  } finally {
+    state.loading = false;
+    btnReadDNS.textContent = "📖 读取";
+    updateButtonStates();
+  }
+});
+
+// ────────────────────────────────────────────
+// Event: Set DNS
+// ────────────────────────────────────────────
+btnSetDNS.addEventListener("click", async () => {
+  if (!state.selectedIface || state.loading) return;
+  const raw = dnsInput.value.trim();
+  const servers = raw ? raw.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean) : [];
+  if (servers.length === 0 && !confirm(`确认清除 ${state.selectedIface} 的 DNS 并恢复自动？（提示输入 DNS 后写入）`)) return;
+
+  state.loading = true;
+  updateButtonStates();
+  btnSetDNS.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const res = await window.iphelper.setDNS(state.selectedIface, servers);
+    if (!res.success) {
+      showToast(res.error, "error");
+      addLogLocal("[错误] " + res.error, "log-error");
+      return;
+    }
+    const applied = res.data.dns ? res.data.dns.join(", ") : "自动";
+    dnsCurrent.textContent = applied;
+    addLogLocal(`[DNS写入] ${state.selectedIface}: ${applied}`, "log-success");
+    showToast("DNS 已写入", "success");
+  } catch (e) {
+    showToast("写入 DNS 失败: " + e.message, "error");
+  } finally {
+    state.loading = false;
+    btnSetDNS.textContent = "✍️ 写入 DNS";
     updateButtonStates();
   }
 });

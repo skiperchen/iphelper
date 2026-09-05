@@ -167,6 +167,55 @@ ipcMain.handle("get-current-config", async (_event, iface) => {
   }
 });
 
+/** get-dns: 读取指定网卡当前的 DNS 服务器 */
+ipcMain.handle("get-dns", async (_event, iface) => {
+  try {
+    if (!iface || typeof iface !== "string") {
+      return { success: false, error: "请指定网卡名称" };
+    }
+    const netName = await getServiceName(iface);
+    if (!netName) {
+      return { success: false, error: `无法找到网卡 "${iface}" 对应的网络服务名` };
+    }
+    const raw = await execPromise("networksetup", ["-getdnsservers", netName]).catch(() => "");
+    const dns = raw
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => isValidIP(s));
+    await appendLog(`读取 DNS: ${netName}(${iface}) → ${dns.length ? dns.join(", ") : "无(自动)"}`);
+    return { success: true, data: { interface: iface, serviceName: netName, dns } };
+  } catch (e) {
+    return { success: false, error: `读取 DNS 失败: ${e.message}` };
+  }
+});
+
+/** set-dns: 写入指定网卡的 DNS 服务器（servers 为空数组 = 恢复自动/清空为 Empty） */
+ipcMain.handle("set-dns", async (_event, iface, servers) => {
+  try {
+    if (!iface || typeof iface !== "string") {
+      return { success: false, error: "请指定网卡名称" };
+    }
+    const netName = await getServiceName(iface);
+    if (!netName) {
+      return { success: false, error: `无法找到网卡 "${iface}" 对应的网络服务名` };
+    }
+    const rawList = Array.isArray(servers) ? servers.map((s) => String(s).trim()).filter(Boolean) : [];
+    for (const s of rawList) {
+      if (!isValidIP(s)) return { success: false, error: `DNS 地址无效: ${s}` };
+    }
+    const cmd =
+      rawList.length === 0
+        ? `networksetup -setdnsservers "${netName}" Empty`
+        : `networksetup -setdnsservers "${netName}" ${rawList.map((d) => `"${d}"`).join(" ")}`;
+    await sudoExec(cmd);
+    await appendLog(`设置 DNS: ${netName}(${iface}) → ${rawList.length ? rawList.join(", ") : "Empty(自动)"}`);
+    return { success: true, data: { interface: iface, dns: rawList.length ? rawList : null } };
+  } catch (e) {
+    await appendLog(`设置 DNS 失败: ${e.message}`);
+    return { success: false, error: `设置 DNS 失败: ${e.message}` };
+  }
+});
+
 /** save-config: 保存配置到 configs/xxx.json（拒绝覆盖） */
 ipcMain.handle("save-config", async (_event, config) => {
   try {
